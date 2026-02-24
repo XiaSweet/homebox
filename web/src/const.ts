@@ -1,6 +1,26 @@
 import { Config, SpeedMode, RateUnit, Theme } from './types'
 
-export const BASE_URL = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3300'
+// 获取基础URL，支持从环境变量或HTML base标签获取上下文路径
+function getBaseUrl(): string {
+    if (process.env.NODE_ENV === 'development') {
+        return 'http://localhost:3300';
+    }
+    
+    // 在生产环境中，尝试从HTML的base标签获取路径前缀
+    if (typeof document !== 'undefined') {
+        const baseTag = document.querySelector('base');
+        if (baseTag && baseTag.href) {
+            // 移除末尾的斜杠（如果存在）
+            const basePath = baseTag.href.replace(/\/$/, '');
+            return basePath;
+        }
+    }
+    
+    // 默认返回空字符串（相对于当前域名）
+    return '';
+}
+
+export const BASE_URL = getBaseUrl();
 export const CONFIG_STORAGE_KEY = 'homebox:config'
 
 const systemTheme = (() => {

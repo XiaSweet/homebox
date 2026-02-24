@@ -11,6 +11,7 @@
 - 服务端无需像传统文件拷贝一样需要固态的支持
 - 友好的 UI 交互
 - 针对低速网络(< 2.5G)优化测速资源占用
+- 支持 Nginx 反向代理和自定义路径前缀
 
 [v1 进度追踪看板](https://github.com/XGHeaven/homebox/projects/1)
 
@@ -51,6 +52,111 @@ Options:
       --host <HOST>  Host to listen
   -h, --help         Print help
 ```
+
+## Build from Source
+
+### Prerequisites
+
+确保系统已安装以下工具：
+
+- **Rust** (1.82+) 和 Cargo
+- **Node.js** (支持 pnpm)
+- **pnpm** 包管理器
+- **corepack** (用于启用 pnpm)
+- **Docker** (可选，用于容器化部署)
+
+### Development Setup
+
+```bash
+# 克隆项目
+git clone https://github.com/XGHeaven/homebox.git
+cd homebox
+
+# 安装前端依赖
+make bootstrap-web
+
+# 安装后端依赖（检查）
+make bootstrap-server
+
+# 启动前端开发服务器
+make run-web
+
+# 启动后端开发服务
+make run-server
+```
+
+### Production Build
+
+```bash
+# 全量构建（前端 + 后端）
+make build
+
+# 单独构建前端
+make build-web
+
+# 单独构建后端（生产）
+make build-server
+```
+
+构建产物位于：
+- 前端：`web/build/`
+- 后端：`target/release/homebox`
+
+## Advanced Configuration
+
+### Nginx 反向代理配置
+
+Homebox 现在支持通过 `WEB_CONTEXT_PATH` 环境变量来配置路径前缀，这使得可以通过 Nginx 反向代理来部署服务。
+
+#### 方法一：通过环境变量设置
+
+在启动服务时设置 `WEB_CONTEXT_PATH` 环境变量：
+
+```bash
+# Docker 方式
+docker run -d -p 3300:3300 --name homebox -e WEB_CONTEXT_PATH=/homebox xgheaven/homebox
+
+# 二进制方式
+WEB_CONTEXT_PATH=/homebox ./homebox serve --port 3300
+```
+
+这样所有 API 请求将会发送到 `/homebox/ping`、`/homebox/download` 等路径。
+
+#### 方法二：Nginx 配置示例
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location /homebox/ {
+        proxy_pass http://127.0.0.1:3300/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+访问地址将是：`http://your-domain.com/homebox/`
+
+### 环境变量配置
+
+可以创建 `.env` 文件来配置环境变量：
+
+```bash
+# 复制示例配置文件
+cp .env.example .env
+
+# 编辑配置
+vim .env
+```
+
+支持的环境变量：
+- `WEB_CONTEXT_PATH`: Web 应用的上下文路径前缀
+- `PORT`: 服务端口（默认 3300）
+- `HOST`: 服务主机地址（默认 0.0.0.0）
 
 ## Usage
 
@@ -122,10 +228,14 @@ homebox-linux-arm64: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV
 
 则可以尝试使用 arm64-musl 格式而非 arm64 文件
 
-## Powered by
+### 如何配置 Nginx 反向代理
 
-- Rust(actix-web) 服务端
-- TypeScript 前端语言
-- React 前端框架
-- Rspack 前端打包工具
-- 其他依赖请查看相应文件
+请参考上面的 [Nginx 反向代理配置](#nginx-反向代理配置) 部分。
+
+## Original Repository
+
+本项目基于原始仓库进行改进：[https://github.com/XGHeaven/homebox](https://github.com/XGHeaven/homebox)
+
+## License
+
+This project is licensed under the GPL License - see the [LICENSE](LICENSE) file for details.

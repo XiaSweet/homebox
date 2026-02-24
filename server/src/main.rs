@@ -8,6 +8,7 @@ use include_dir::{include_dir, Dir};
 use mime_guess::mime;
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::env;
 
 const WRITE_PACK_SIZE: usize = 1 * 1024 * 1024;
 
@@ -31,6 +32,11 @@ struct ServeArgs {
     port: Option<u16>,
     #[arg(long, help = "Host to listen")]
     host: Option<String>,
+}
+
+// 获取上下文路径前缀
+fn get_context_path() -> String {
+    env::var("WEB_CONTEXT_PATH").unwrap_or_default()
 }
 
 #[get("/ping")]
@@ -102,32 +108,58 @@ async fn static_resource(req: HttpRequest) -> impl Responder {
 
 #[get("/")]
 async fn index() -> impl Responder {
-    HttpResponse::Ok().content_type(ContentType::html()).body(
-        STATIC
-            .get_file("index.html")
-            .unwrap()
-            .contents_utf8()
-            .unwrap(),
-    )
+    let context_path = get_context_path();
+    let mut html_content = STATIC
+        .get_file("index.html")
+        .unwrap()
+        .contents_utf8()
+        .unwrap()
+        .to_string();
+    
+    // 如果有上下文路径，在HTML中注入基础路径配置
+    if !context_path.is_empty() {
+        let base_tag = format!("<base href=\"{}\">", context_path);
+        html_content = html_content.replace("<head>", &format!("<head>\n  {}", base_tag));
+    }
+    
+    HttpResponse::Ok().content_type(ContentType::html()).body(html_content)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
+    let context_path = get_context_path();
+    
+    println!("Web context path: {}", if context_path.is_empty() { "/" } else { &context_path });
 
     match &cli.command {
         Comamnds::Serve(args) => {
-            let server = HttpServer::new(|| {
-                App::new()
+            let server = HttpServer::new(move || {
+                let app = App::new()
                     .wrap(
                         middleware::DefaultHeaders::new().add(("Access-Control-Allow-Origin", "*")),
-                    )
-                    .service(download)
-                    .service(upload)
-                    .service(upload_options)
-                    .service(ping)
-                    .service(static_resource)
-                    .service(index)
+                    );
+                
+                // 如果有上下文路径，添加带前缀的路由
+                if context_path.is_empty() {
+                    app
+                        .service(download)
+                        .service(upload)
+                        .service(upload_options)
+                        .service(ping)
+                        .service(static_resource)
+                        .service(index)
+                } else {
+                    app
+                        .service(web::scope(&context_path)
+                            .service(download)
+                            .service(upload)
+                            .service(upload_options)
+                            .service(ping)
+                            .service(static_resource)
+                        )
+                        .service(index) // 根路径仍然可用
+                }
             });
 
             let server_bind_address = format!(
